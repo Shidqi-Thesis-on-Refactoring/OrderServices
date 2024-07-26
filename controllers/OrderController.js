@@ -1,15 +1,19 @@
-const Product = require("./../models/ProductModel");
-const Cart = require("./../models/Cart");
-const Order = require("./../models/Order");
-const Shipper = require("./../models/Shipper");
+// const Product = require("./../models/ProductModel");
+const Cart = require("./../models/CartModel");
+const Order = require("./../models/OrderModel");
+const Shipper = require("./../models/ShipperModel");
+const User = require('../models/UsersModel');
+const Address = require('../models/AddressesModel');
 const mongoose = require("mongoose");
+const axios = require('axios');
+const ProductService = process.env.PRODUCTSERVICE_BASE_URI;
 
 //handle GET at /api/order/orderSuccess to finish the order and move the cart to history
-exports.orderSuccess = (req, res) => {
+exports.orderSuccess =  (req, res) => {
   let userId = req.user.id;
 
   // find the current user cart
-  Cart.findOne({ user: userId }).then(cart => {
+  Cart.findOne({ user: userId }).then(async cart => {
     // if the cart is empty, end with 400 respond
     if (cart.items.length === 0) {
       res.status(400).json({ message: "Your cart is empty" });
@@ -17,25 +21,46 @@ exports.orderSuccess = (req, res) => {
       let cartInfo = cart.items;
 
       // we need to decreament the item's number in stock
-      cartInfo.forEach(item => {
-        Product.updateOne(
-          { _id: item.product },
+      try {
+        const token = req.headers['authorization'];
+
+        if (!token) {
+          return res.status(401).json('Authorization token is required');
+        }
+        
+        const resp = await axios.patch(`${ProductService}/api/product/decrement-stock`, 
+          { product : cartInfo },
           {
-            $inc: {
-              numberInStock: -item.quantity
-            }
-          },
-          { new: true },
-          err => {
-            if (err) {
-              return res.status(400).json({
-                message: "Couldn't decrease item's quantity",
-                err
-              });
+            headers : {
+              'Authorization' : token,
+              'Content-Type': 'application/json'
             }
           }
         );
-      });
+        console.log(resp.data);
+        
+      } catch (error) {
+        return res.status(500).json({ message : "Something went wrong" });
+      }
+      // cartInfo.forEach(item => {
+      //   Product.updateOne(
+      //     { _id: item.product },
+      //     {
+      //       $inc: {
+      //         numberInStock: -item.quantity
+      //       }
+      //     },
+      //     { new: true },
+      //     err => {
+      //       if (err) {
+      //         return res.status(400).json({
+      //           message: "Couldn't decrease item's quantity",
+      //           err
+      //         });
+      //       }
+      //     }
+      //   );
+      // });
 
       // Then create a new order related to the user
       // 1- find the user's cart
@@ -85,30 +110,34 @@ exports.orderSuccess = (req, res) => {
 
 //handle GET at api/order/userOrdersHistory to Get all user's orders
 exports.userOrdersHistory = (req, res) => {
-  let userId = req.user.id;
-
-  Order.find({ user: userId })
-    .sort({ orderDate: -1 })
-    .populate({
-      path: "products.product",
-      model: "Product",
-      populate: {
-        path: "seller",
-        model: "User",
-        select: "username"
-      }
-    })
-    .populate("address")
-    .exec((err, orders) => {
-      if (err) {
-        res.status(400).json({ message: "Couldn't find cart", err });
-      } else {
-        res.status(200).json({ message: "All user's orders", orders });
-      }
-    });
+  try {
+    let userId = req.user.id;
+  
+    Order.find({ user: userId })
+      .sort({ orderDate: -1 })
+      .populate({
+        path: "products.product",
+        model: "Product",
+        populate: {
+          path: "seller",
+          model: "User",
+          select: "username"
+        }
+      })
+      .populate("address")
+      .exec((err, orders) => {
+        if (err) {
+          res.status(400).json({ message: "Couldn't find cart", err });
+        } else {
+          res.status(200).json({ message: "All user's orders", orders });
+        }
+      });
+  } catch (err) {
+    return res.status(500).json({ message: `Something went wrong. ${err}`});
+  }
 };
 
-//handle GET at api/order/ordersToShip to all seller's orders to be delivered
+//handle GET at api/order/ordersToShip to all seller's orders needed to be delivered
 exports.ordersToShip = (req, res) => {
   let userId = req.user.id;
 
@@ -183,26 +212,30 @@ exports.markAsShipped = (req, res) => {
   // we want to change the item state in the orders
   // so the customer who ordered the product can track
   // the order state
-  Order.findOneAndUpdate(
-    {
-      products: { $elemMatch: { _id: mongoose.Types.ObjectId(orderId) } }
-    },
-    { $set: { "products.$.orderState.shipped": true } },
-    { new: true, useFindAndModify: false },
-    (err, order) => {
-      if (err) {
-        res.status(400).json({ message: "Couldn't mark shipped, try again.", err });
-      } else {
-        // order contains the whole items in the order and we want to return just our updated item
-        let shippedOrder = order.products.filter(item => item._id == req.query.orderId);
-        let updatedItemOnly = shippedOrder[0];
-
-        res
-          .status(200)
-          .json({ message: "Marked as shipped", shippedOrder: updatedItemOnly });
+  try {
+    Order.findOneAndUpdate(
+      {
+        products: { $elemMatch: { _id: mongoose.Types.ObjectId(orderId) } }
+      },
+      { $set: { "products.$.orderState.shipped": true } },
+      { new: true, useFindAndModify: false },
+      (err, order) => {
+        if (err) {
+          res.status(400).json({ message: "Couldn't mark shipped, try again.", err });
+        } else {
+          // order contains the whole items in the order and we want to return just our updated item
+          let shippedOrder = order.products.filter(item => item._id == req.query.orderId);
+          let updatedItemOnly = shippedOrder[0];
+  
+          res
+            .status(200)
+            .json({ message: "Marked as shipped", shippedOrder: updatedItemOnly });
+        }
       }
-    }
-  );
+    );
+  } catch (err) {
+    return res.status(500).json({ message : `Something went wrong. ${err}`});
+  }
 };
 
 //handle GET at api/order/ordersToDeliver to get all shipper's orders

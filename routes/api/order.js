@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const { auth, shipperAuth } = require("../../middlewares/auth");
-const order_controller = require("controllers/orderController");
+const { auth, shipperAuth } = require("../../middleware/auth");
+const order_controller = require("../../controllers/OrderController");
 
 // @route   GET api/order/orderSuccess
 // @desc    Finish the order and move the cart to history

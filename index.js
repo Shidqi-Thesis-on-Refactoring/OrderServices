@@ -6,13 +6,14 @@ require("dotenv").config();
 const cors = require("cors");
 
 // our routes
-const cartRouter = require("routes/api/cart");
+const cartRouter = require("./routes/api/cart");
 const orderRouter = require("./routes/api/order");
 
 const app = express();
 
 // for body-parser middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended : false }));
 
 //cors middleware
 app.use(cors());
@@ -26,12 +27,14 @@ app.use("/uploads", express.static("uploads"));
 // Database uri
 const dbURI = process.env.DB_URI;
 
-mongoose.connect(dbURI);
-// {
-//     useNewUrlParser: true,
-//     useUnifiedTopology: true,
-//     useCreateIndex: true
-//   }
+mongoose.connect(dbURI, 
+  {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    useCreateIndex: true
+  }
+);
+
 
 //test database connection
 let db = mongoose.connection;

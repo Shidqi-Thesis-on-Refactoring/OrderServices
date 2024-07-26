@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const { auth } = require("../../middlewares/auth");
-const cart_controller = require("controllers/cartController");
-const cart_validation = require("./../../middlewares/validation/validateOrderQuantity");
+const { auth } = require("../../middleware/auth");
+const cart_controller = require("../../controllers/cartController");
+const cart_validation = require("./../../middleware/validation/validateOrderQuantity");
 
 // @route   PUT api/cart/addToCart?productId=123123132
 // @desc    Add item to the cart

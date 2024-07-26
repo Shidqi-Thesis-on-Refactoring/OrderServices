@@ -1,8 +1,10 @@
-const Cart = require("./../models/Cart");
+const Cart = require("./../models/CartModel");
 const Product = require("./../models/ProductModel");
+const axios = require('axios');
+const ProductService = process.env.PRODUCTSERVICE_BASE_URI;
 
 // handle get request at "/api/cart/addToCart?productId="
-exports.addToCart = (req, res) => {
+exports.addToCart = async (req, res) => {
   const userId = req.user.id;
 
   const productId = req.query.productId;
@@ -23,9 +25,12 @@ exports.addToCart = (req, res) => {
   // first we need to check if the item is in the stock
   // just in case the customer views a product and it's the last piece
   // and another user orders it before him
-  Product.findById(productId, (err, foundProduct) => {
-    // if the item stock = 0 end with this respond
-    if (foundProduct.numberInStock === 0) {
+  try {
+    const foundProduct = await axios.get(`${ProductService}/api/product/${productId}`);
+
+    if (!foundProduct) return res.status(500).json("Something went wrong");
+
+    if (foundProduct.data.numberInStock === 0) {
       return res.status(400).json({
         message: "The product went out of stock."
       });
@@ -33,7 +38,20 @@ exports.addToCart = (req, res) => {
       // else call the addToCart function to complete the proccess
       addToCart();
     }
-  });
+  } catch (error) {
+    return res.status(500).json({ message: "Something went wrong" });
+  }
+  // Product.findById(productId, (err, foundProduct) => {
+  //   // if the item stock = 0 end with this respond
+  //   if (foundProduct.numberInStock === 0) {
+  //     return res.status(400).json({
+  //       message: "The product went out of stock."
+  //     });
+  //   } else {
+  //     // else call the addToCart function to complete the proccess
+  //     addToCart();
+  //   }
+  // });
 
   // add an item to cart
   function addToCart() {
@@ -115,25 +133,26 @@ exports.userCartInfo = (req, res) => {
     .populate("items.product")
     .exec((err, cart) => {
       if (err) {
-        res.status(400).json({ message: "Couldn't find cart", err });
+        res.status(400).json({ message: `Couldn't find cart. ${err}`, err });
       } else {
         if (!cart) {
           res.status(400).json({ message: "no cart" });
         } else {
-          let cartItems = cart.items;
-          let total = cartItems.reduce(function (a, b) {
-            return a + b.product.price * b.quantity;
-          }, 0);
+            updateCartTotalPrice(cart, userId, res);
+        //   let cartItems = cart.items;
+        //   let total = cartItems.reduce(function (a, b) {
+        //     return a + b.product.price * b.quantity;
+        //   }, 0);
 
-          Cart.findOneAndUpdate(
-            { user: userId },
-            { totalPrice: total },
-            { new: true, useFindAndModify: false }
-          )
-            .populate("items.product")
-            .then(cart => {
-              res.status(200).json({ message: "cart", cart });
-            });
+        //   Cart.findOneAndUpdate(
+        //     { user: userId },
+        //     { totalPrice: total },
+        //     { new: true, useFindAndModify: false }
+        //   )
+        //     .populate("items.product")
+        //     .then(cart => {
+        //       res.status(200).json({ message: "cart", cart });
+        //     });
         }
       }
     });
@@ -158,22 +177,23 @@ exports.removeFromCart = (req, res) => {
             if (err) {
               res.status(400).json({ message: "Couldn't find cart", err });
             } else {
-              // count the new total price of the order
-              let cartItems = cart.items;
-              let total = cartItems.reduce(function (a, b) {
-                return a + b.product.price * b.quantity;
-              }, 0);
+                updateCartTotalPrice(cart, userId, res);
+            //   // count the new total price of the order
+            //   let cartItems = cart.items;
+            //   let total = cartItems.reduce(function (a, b) {
+            //     return a + b.product.price * b.quantity;
+            //   }, 0);
 
-              // then find the same cart and update the total price
-              Cart.findOneAndUpdate(
-                { user: userId },
-                { totalPrice: total },
-                { new: true, useFindAndModify: false }
-              )
-                .populate("items.product")
-                .then(cart => {
-                  res.status(200).json({ message: "Deleted Succefully", cart });
-                });
+            //   // then find the same cart and update the total price
+            //   Cart.findOneAndUpdate(
+            //     { user: userId },
+            //     { totalPrice: total },
+            //     { new: true, useFindAndModify: false }
+            //   )
+            //     .populate("items.product")
+            //     .then(cart => {
+            //       res.status(200).json({ message: "Deleted Succefully", cart });
+            //     });
             }
           });
       }
@@ -191,7 +211,7 @@ exports.changeQuantityFromCart = (req, res) => {
     {
       user: userId,
       items: {
-        $elemMatch: { _id: productId }
+        $elemMatch: { product: productId }
       }
     },
     { $set: { "items.$.quantity": req.body.orderQuantity } },
@@ -205,22 +225,23 @@ exports.changeQuantityFromCart = (req, res) => {
           err
         });
       } else {
-        // count the new total price of the order
-        let cartItems = cart.items;
-        let total = cartItems.reduce(function (a, b) {
-          return a + b.product.price * b.quantity;
-        }, 0);
+        updateCartTotalPrice(cart, userId, res);
+        // // count the new total price of the order
+        // let cartItems = cart.items;
+        // let total = cartItems.reduce(function (a, b) {
+        //   return a + b.product.price * b.quantity;
+        // }, 0);
 
-        // then find the same cart and update the total price
-        Cart.findOneAndUpdate(
-          { user: userId },
-          { totalPrice: total },
-          { new: true, useFindAndModify: false }
-        )
-          .populate("items.product")
-          .then(cart => {
-            res.status(200).json({ message: "Quantity changed in the cart", cart });
-          });
+        // // then find the same cart and update the total price
+        // Cart.findOneAndUpdate(
+        //   { user: userId },
+        //   { totalPrice: total },
+        //   { new: true, useFindAndModify: false }
+        // )
+        //   .populate("items.product")
+        //   .then(cart => {
+        //     res.status(200).json({ message: "Quantity changed in the cart", cart });
+        //   });
       }
     });
 };
@@ -244,3 +265,24 @@ exports.chooseOrderAddress = (req, res) => {
     }
   });
 };
+
+const updateCartTotalPrice = (cart, userId, res) => {
+  try {
+    let cartItems = cart.items;
+      let total = cartItems.reduce(function (a, b) {
+        return a + b.product.price * b.quantity;
+      }, 0);
+  
+      Cart.findOneAndUpdate(
+        { user: userId },
+        { totalPrice: total },
+        { new: true, useFindAndModify: false }
+      )
+      .populate("items.product")
+      .then(cart => {
+        res.status(200).json({ message: "cart", cart });
+      });
+  } catch (err) {
+    res.status(500).json({ message: `Something went wrong. ${err}`});
+  }
+}
